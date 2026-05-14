@@ -2,12 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-EXCLUDED_DIRS = frozenset([".git", ".obsidian", ".venv", ".claude", "inbox", "openspec"])
-KNOWLEDGE_FOLDERS = ["Concepts", "Guides", "Projects", "Systems", "Topics"]
-VALID_PREFIXES = frozenset(["article", "convo", "note", "meeting"])
-MAX_SEARCH_RESULTS = 20
-INDEX_FALLBACK_THRESHOLD = 3  # trigger grep when INDEX yields fewer than this many results
-
 
 @dataclass
 class IndexEntry:

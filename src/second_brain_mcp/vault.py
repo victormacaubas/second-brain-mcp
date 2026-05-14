@@ -11,11 +11,6 @@ import yaml
 from second_brain_mcp.config import Config
 from second_brain_mcp.index import merge_results, parse_index_line, score_index_entry
 from second_brain_mcp.models import (
-    EXCLUDED_DIRS,
-    INDEX_FALLBACK_THRESHOLD,
-    KNOWLEDGE_FOLDERS,
-    MAX_SEARCH_RESULTS,
-    VALID_PREFIXES,
     FolderItem,
     IndexEntry,
     Note,
@@ -26,6 +21,12 @@ from second_brain_mcp.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+EXCLUDED_DIRS = frozenset([".git", ".obsidian", ".venv", ".claude", "inbox", "openspec"])
+KNOWLEDGE_FOLDERS = ["Concepts", "Guides", "Projects", "Systems", "Topics"]
+VALID_PREFIXES = frozenset(["article", "convo", "note", "meeting"])
+MAX_SEARCH_RESULTS = 20
+INDEX_FALLBACK_THRESHOLD = 3  # trigger grep when INDEX yields fewer than this many results
 
 
 class Vault:
