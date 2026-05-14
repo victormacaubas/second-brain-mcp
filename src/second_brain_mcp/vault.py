@@ -33,10 +33,6 @@ class Vault:
     def __init__(self, config: Config) -> None:
         self._root = config.vault_path
 
-    # ------------------------------------------------------------------
-    # INDEX.md parser
-    # ------------------------------------------------------------------
-
     def parse_index(self) -> list[IndexEntry]:
         """Read INDEX.md and return all note entries found.
 
@@ -54,10 +50,6 @@ class Vault:
             if entry:
                 entries.append(entry)
         return entries
-
-    # ------------------------------------------------------------------
-    # Frontmatter parser
-    # ------------------------------------------------------------------
 
     def parse_frontmatter(self, note_path: Path) -> tuple[NoteMetadata, str]:
         """Split YAML frontmatter from markdown body and return both.
@@ -98,10 +90,6 @@ class Vault:
             aliases=list(fm.get("aliases") or []),
         )
         return metadata, body
-
-    # ------------------------------------------------------------------
-    # Note resolution
-    # ------------------------------------------------------------------
 
     def resolve_note(self, identifier: str) -> Note:
         """Resolve an identifier to a vault note using three strategies.
@@ -162,10 +150,6 @@ class Vault:
             f"Use search_vault('{identifier}') to search by content."
         )
 
-    # ------------------------------------------------------------------
-    # Folder listing
-    # ------------------------------------------------------------------
-
     def list_folder(
         self, folder: str | None = None
     ) -> list[TopLevelFolder] | list[FolderItem]:
@@ -215,10 +199,6 @@ class Vault:
                 description=metadata.description,
             ))
         return items
-
-    # ------------------------------------------------------------------
-    # Search
-    # ------------------------------------------------------------------
 
     def search(self, query: str) -> tuple[list[SearchResult], int]:
         """Search the vault for notes matching query.
@@ -307,10 +287,6 @@ class Vault:
                 logger.debug("Skipping %s in grep results: %s", abs_path, e)
         return results
 
-    # ------------------------------------------------------------------
-    # Inbox write
-    # ------------------------------------------------------------------
-
     def create_inbox_note(
         self,
         title: str,
@@ -360,10 +336,6 @@ class Vault:
         target.write_text(frontmatter + content, encoding="utf-8")
 
         return str(target.relative_to(self._root))
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     def _load_note(self, note_path: Path) -> Note:
         metadata, content = self.parse_frontmatter(note_path)

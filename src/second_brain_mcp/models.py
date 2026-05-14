@@ -23,14 +23,14 @@ class NoteMetadata:
 
 @dataclass
 class Note:
-    relative_path: str  # e.g. "Concepts/mcp-and-agent-fundamentals.md"
-    content: str        # markdown body without the YAML frontmatter block
+    relative_path: str
+    content: str
     metadata: NoteMetadata
 
 
 @dataclass
 class FolderItem:
-    path: str           # relative path from vault root
+    path: str
     title: str
     description: str | None
 
@@ -43,11 +43,11 @@ class TopLevelFolder:
 
 @dataclass
 class SearchResult:
-    path: str           # relative path usable with read_note
+    path: str
     title: str
     description: str
     tags: list[str]
-    match_source: str   # "index" or "grep"
+    match_source: str
 
 
 def empty_metadata(stem: str) -> NoteMetadata:
