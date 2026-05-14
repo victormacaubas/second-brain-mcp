@@ -1,10 +1,10 @@
 ## 1. Project Scaffolding
 
-- [ ] 1.1 Initialize uv project with Python 3.13 (`uv init`, set `.python-version` to `3.13`, create venv with `uv venv`)
-- [ ] 1.2 Create `pyproject.toml` with project metadata, `mcp` SDK dependency, and Python 3.13 requirement
-- [ ] 1.3 Create `src/second_brain_mcp/__init__.py`
-- [ ] 1.4 Create `src/second_brain_mcp/config.py` with frozen dataclass reading `VAULT_PATH` from environment, validate path exists at construction
-- [ ] 1.5 Create minimal `src/second_brain_mcp/server.py` with FastMCP app and a single hello-world tool, verify it runs with MCP Inspector
+- [x] 1.1 Initialize uv project with Python 3.13 (`uv init`, set `.python-version` to `3.13`, create venv with `uv venv`)
+- [x] 1.2 Create `pyproject.toml` with project metadata, `mcp` SDK dependency, and Python 3.13 requirement
+- [x] 1.3 Create `src/second_brain_mcp/__init__.py`
+- [x] 1.4 Create `src/second_brain_mcp/config.py` with frozen dataclass reading `VAULT_PATH` from environment, validate path exists at construction
+- [x] 1.5 Create minimal `src/second_brain_mcp/server.py` with FastMCP app and a single hello-world tool, verify it runs with MCP Inspector
 
 ## 2. Vault Read Logic
 

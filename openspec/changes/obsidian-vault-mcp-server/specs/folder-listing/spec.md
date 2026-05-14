@@ -32,6 +32,20 @@ The `list_folder` tool SHALL return a helpful error when the folder does not exi
 - **WHEN** user calls `list_folder(folder="NonExistent")`
 - **THEN** system returns an error: "Folder 'NonExistent' not found. Available top-level folders: Concepts, Guides, Projects, Systems, Topics. Use list_folder() without arguments to browse."
 
+### Requirement: Success result includes a next-step hint
+
+On any non-empty listing, `list_folder` SHALL append a hint that tells the model how to navigate deeper.
+
+#### Scenario: Top-level listing returned
+
+- **WHEN** `list_folder()` returns the top-level folder list
+- **THEN** response includes a hint: "Use list_folder(folder=<name>) to browse a folder, or search_vault(query) to find notes by keyword."
+
+#### Scenario: Folder notes listed
+
+- **WHEN** `list_folder(folder="Concepts")` returns notes
+- **THEN** response includes a hint: "Use read_note(identifier=<path>) to open a note."
+
 ### Requirement: Inbox folder is excluded
 
 The `list_folder` tool SHALL NOT list `inbox/` as a browsable folder and SHALL refuse to list its contents.

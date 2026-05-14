@@ -55,6 +55,15 @@ The `create_inbox_note` tool SHALL NOT overwrite existing files. If a file with 
 - **WHEN** user calls `create_inbox_note(title="Meeting Notes", content="...", prefix="meeting")` and `inbox/meeting-meeting-notes.md` already exists
 - **THEN** system creates `inbox/meeting-meeting-notes-1.md` and returns the actual created filepath
 
+### Requirement: Success result includes a next-step hint
+
+On successful creation, `create_inbox_note` SHALL return the created path and a reminder about the inbox workflow.
+
+#### Scenario: Note created successfully
+
+- **WHEN** `create_inbox_note` writes a file successfully
+- **THEN** the response is: "Created inbox/meeting-sprint-planning.md. Run /process-inbox in Obsidian to file it into the vault."
+
 ### Requirement: Validate prefix values
 
 The `create_inbox_note` tool SHALL accept only valid prefix values: `"article"`, `"convo"`, `"note"`, `"meeting"`. Invalid prefixes SHALL produce a clear error.

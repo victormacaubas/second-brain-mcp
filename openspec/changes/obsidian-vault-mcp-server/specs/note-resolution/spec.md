@@ -42,6 +42,15 @@ The `read_note` tool SHALL accept an alias string and resolve it by scanning fro
 - **WHEN** user calls `read_note(identifier="Unknown Alias XYZ")`
 - **THEN** system returns an error: "No note found with identifier 'Unknown Alias XYZ'. It didn't match any path, filename, or alias. Use search_vault('Unknown Alias XYZ') to search by content."
 
+### Requirement: Success result includes a next-step hint
+
+On a successful read, `read_note` SHALL append a hint that helps the model navigate from here.
+
+#### Scenario: Note with tags
+
+- **WHEN** `read_note` successfully returns a note that has tags
+- **THEN** the response includes a trailing hint such as: "Use search_vault(query=<tag>) to find related notes, or list_folder(<parent_folder>) to browse this folder."
+
 ### Requirement: Metadata is always returned alongside content
 
 The `read_note` tool SHALL always return both the raw markdown body (without frontmatter) and a structured metadata object parsed from YAML frontmatter.

@@ -52,6 +52,16 @@ All write operations target `inbox/` exclusively. This mirrors the vault's "cour
 
 **Alternative considered:** CLI argument (`--vault-path`) — viable, but env var is idiomatic for MCP servers (matches how clients pass config). Could support both later.
 
+### 6. Pydantic input models for all tools
+
+Each tool's parameters are declared as a `pydantic.BaseModel` subclass with `Field()` descriptions. FastMCP uses these to auto-generate the JSON Schema sent to the LLM as part of the tool definition. Field descriptions directly influence how the model fills arguments, so they are treated as prompts.
+
+**Alternative considered:** Bare Python function parameters — simpler, but loses per-field descriptions in the schema. Those descriptions matter when the LLM has to decide whether `folder="Concepts"` or `folder="Projects/my-project"` is the right argument.
+
+### 7. Tool annotations on every tool
+
+All tools carry `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` annotations via `@mcp.tool(annotations={...})`. Read tools are marked `readOnlyHint=True`; `create_inbox_note` is `destructiveHint=False, idempotentHint=False`. Clients may use these to display affordances or request additional confirmation.
+
 ### 6. src/ layout with server/vault/config separation
 
 - `config.py`: frozen dataclass loaded from env, validated at construction
@@ -59,6 +69,10 @@ All write operations target `inbox/` exclusively. This mirrors the vault's "cour
 - `server.py`: FastMCP app definition, tool decorators, error formatting. Composition root that wires config → vault → tools.
 
 This separation means vault logic is testable independently of MCP transport (future benefit) and keeps server.py focused on tool descriptions and error UX.
+
+### 8. Logging to stderr only
+
+stdio transport uses stdout as the MCP message channel. Any `print()` or logger output written to stdout will corrupt the protocol stream. All logging is configured to go to stderr (`logging.basicConfig(stream=sys.stderr)`).
 
 ## Risks / Trade-offs
 

@@ -41,3 +41,12 @@ The `search_vault` tool SHALL never return results from the `inbox/` folder, con
 
 - **WHEN** user calls `search_vault(query="draft-meeting-notes")` and the term only appears in `inbox/`
 - **THEN** system returns no results (inbox is excluded from search)
+
+### Requirement: Success results include a next-step hint
+
+On any non-empty result set, `search_vault` SHALL append a hint telling the model what to do with the paths returned.
+
+#### Scenario: Results found
+
+- **WHEN** `search_vault` returns one or more results
+- **THEN** the response includes a trailing hint such as: "Use read_note(identifier=<path>) to open any of these notes."
