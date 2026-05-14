@@ -2,65 +2,30 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+import subprocess
+from datetime import date
 from pathlib import Path
 
 import yaml
 
 from second_brain_mcp.config import Config
+from second_brain_mcp.index import merge_results, parse_index_line, score_index_entry
+from second_brain_mcp.models import (
+    EXCLUDED_DIRS,
+    INDEX_FALLBACK_THRESHOLD,
+    KNOWLEDGE_FOLDERS,
+    MAX_SEARCH_RESULTS,
+    VALID_PREFIXES,
+    FolderItem,
+    IndexEntry,
+    Note,
+    NoteMetadata,
+    SearchResult,
+    TopLevelFolder,
+    empty_metadata,
+)
 
 logger = logging.getLogger(__name__)
-
-EXCLUDED_DIRS = frozenset([".git", ".obsidian", ".venv", ".claude", "inbox", "openspec"])
-KNOWLEDGE_FOLDERS = ["Concepts", "Guides", "Projects", "Systems", "Topics"]
-
-
-# ---------------------------------------------------------------------------
-# Domain types
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class IndexEntry:
-    wikilink: str  # identifier usable with read_note (stem or relative path without .md)
-    title: str
-    description: str
-    tags: list[str]
-    aliases: list[str]
-
-
-@dataclass
-class NoteMetadata:
-    title: str
-    date: str | None
-    description: str | None
-    tags: list[str]
-    aliases: list[str]
-
-
-@dataclass
-class Note:
-    relative_path: str  # e.g. "Concepts/mcp-and-agent-fundamentals.md"
-    content: str        # markdown body without the YAML frontmatter block
-    metadata: NoteMetadata
-
-
-@dataclass
-class FolderItem:
-    path: str           # relative path from vault root
-    title: str
-    description: str | None
-
-
-@dataclass
-class TopLevelFolder:
-    name: str
-    note_count: int
-
-
-# ---------------------------------------------------------------------------
-# Vault
-# ---------------------------------------------------------------------------
 
 
 class Vault:
@@ -68,14 +33,14 @@ class Vault:
         self._root = config.vault_path
 
     # ------------------------------------------------------------------
-    # 2.2  INDEX.md parser
+    # INDEX.md parser
     # ------------------------------------------------------------------
 
     def parse_index(self) -> list[IndexEntry]:
         """Read INDEX.md and return all note entries found.
 
-        Re-reads the file on every call so search results stay fresh when the
-        vault changes while the server is running.
+        Re-reads on every call so results stay fresh when the vault changes
+        while the server is running.
         """
         index_path = self._root / "INDEX.md"
         if not index_path.exists():
@@ -84,13 +49,13 @@ class Vault:
 
         entries: list[IndexEntry] = []
         for line in index_path.read_text(encoding="utf-8").splitlines():
-            entry = _parse_index_line(line)
+            entry = parse_index_line(line)
             if entry:
                 entries.append(entry)
         return entries
 
     # ------------------------------------------------------------------
-    # 2.3  Frontmatter parser
+    # Frontmatter parser
     # ------------------------------------------------------------------
 
     def parse_frontmatter(self, note_path: Path) -> tuple[NoteMetadata, str]:
@@ -100,8 +65,7 @@ class Vault:
             note_path: Absolute path to a vault note.
 
         Returns:
-            Tuple of (metadata, body). body is the markdown content with the
-            YAML block stripped. Missing frontmatter fields default to
+            Tuple of (metadata, body). Missing frontmatter fields default to
             None / empty list.
 
         Raises:
@@ -110,11 +74,11 @@ class Vault:
         text = note_path.read_text(encoding="utf-8")
 
         if not text.startswith("---"):
-            return _empty_metadata(note_path.stem), text
+            return empty_metadata(note_path.stem), text
 
         end = text.find("\n---", 3)
         if end == -1:
-            return _empty_metadata(note_path.stem), text
+            return empty_metadata(note_path.stem), text
 
         yaml_block = text[3:end]
         body = text[end + 4:].lstrip("\n")
@@ -135,7 +99,7 @@ class Vault:
         return metadata, body
 
     # ------------------------------------------------------------------
-    # 2.4  Note resolution
+    # Note resolution
     # ------------------------------------------------------------------
 
     def resolve_note(self, identifier: str) -> Note:
@@ -198,7 +162,7 @@ class Vault:
         )
 
     # ------------------------------------------------------------------
-    # 2.5  Folder listing
+    # Folder listing
     # ------------------------------------------------------------------
 
     def list_folder(
@@ -243,13 +207,158 @@ class Vault:
             try:
                 metadata, _ = self.parse_frontmatter(md_file)
             except Exception:
-                metadata = _empty_metadata(md_file.stem)
+                metadata = empty_metadata(md_file.stem)
             items.append(FolderItem(
                 path=str(md_file.relative_to(self._root)),
                 title=metadata.title,
                 description=metadata.description,
             ))
         return items
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    def search(self, query: str) -> tuple[list[SearchResult], int]:
+        """Search the vault for notes matching query.
+
+        Runs INDEX-based search first. Falls back to grep if INDEX yields
+        fewer than INDEX_FALLBACK_THRESHOLD results. Merges, deduplicates,
+        and caps at MAX_SEARCH_RESULTS.
+
+        Args:
+            query: Keyword or phrase to search for.
+
+        Returns:
+            Tuple of (results, total_found) where total_found may exceed
+            len(results) when capped.
+        """
+        # Build file list once per call — avoids O(N×files) rglob in _search_index.
+        file_list = [p for p in self._root.rglob("*.md") if not self._is_excluded(p)]
+
+        index_results = self._search_index(query, file_list)
+
+        if len(index_results) < INDEX_FALLBACK_THRESHOLD:
+            grep_results = self._search_grep(query)
+            merged = merge_results(index_results, grep_results)
+        else:
+            merged = index_results
+
+        total = len(merged)
+        return merged[:MAX_SEARCH_RESULTS], total
+
+    def _search_index(self, query: str, file_list: list[Path]) -> list[SearchResult]:
+        q = query.lower()
+        scored: list[tuple[int, IndexEntry]] = []
+
+        for entry in self.parse_index():
+            s = score_index_entry(entry, q)
+            if s > 0:
+                scored.append((s, entry))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        return [
+            SearchResult(
+                path=self._resolve_wikilink_path(entry.wikilink, file_list),
+                title=entry.title,
+                description=entry.description,
+                tags=entry.tags,
+                match_source="index",
+            )
+            for _, entry in scored
+        ]
+
+    def _search_grep(self, query: str) -> list[SearchResult]:
+        exclude_args: list[str] = []
+        for d in EXCLUDED_DIRS:
+            exclude_args += ["--exclude-dir", d]
+
+        try:
+            proc = subprocess.run(
+                ["grep", "-r", "-i", "-l", "--include=*.md",
+                 "--exclude=INDEX.md", "--exclude=README.md",
+                 *exclude_args, query, str(self._root)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            logger.warning("grep fallback failed: %s", e)
+            return []
+
+        results: list[SearchResult] = []
+        for line in proc.stdout.splitlines():
+            abs_path = Path(line.strip())
+            if not abs_path.exists():
+                continue
+            try:
+                rel = str(abs_path.relative_to(self._root))
+                meta, _ = self.parse_frontmatter(abs_path)
+                results.append(SearchResult(
+                    path=rel,
+                    title=meta.title,
+                    description=meta.description or "",
+                    tags=meta.tags,
+                    match_source="grep",
+                ))
+            except Exception as e:
+                logger.debug("Skipping %s in grep results: %s", abs_path, e)
+        return results
+
+    # ------------------------------------------------------------------
+    # Inbox write
+    # ------------------------------------------------------------------
+
+    def create_inbox_note(
+        self,
+        title: str,
+        content: str,
+        prefix: str | None = None,
+        *,
+        today: str | None = None,
+    ) -> str:
+        """Write a new note to inbox/ with auto-generated frontmatter.
+
+        Args:
+            title: Human-readable title (converted to kebab-case for filename).
+            content: Markdown body to write after the frontmatter block.
+            prefix: Optional note type — one of article, convo, note, meeting.
+            today: ISO date string for the frontmatter date field. Defaults to
+                today's date. Accepted as a parameter so tests can pass a
+                fixed date without monkey-patching.
+
+        Returns:
+            Relative path of the created file (e.g. "inbox/note-my-title.md").
+
+        Raises:
+            ValueError: If prefix is not a valid value.
+        """
+        if prefix is not None and prefix not in VALID_PREFIXES:
+            valid = ", ".join(sorted(VALID_PREFIXES))
+            raise ValueError(
+                f"Invalid prefix '{prefix}'. "
+                f"Valid prefixes: {valid}. "
+                "Omit prefix for an unprefixed note."
+            )
+
+        slug = _to_kebab(title)
+        stem = f"{prefix}-{slug}" if prefix else slug
+        inbox_dir = self._root / "inbox"
+        inbox_dir.mkdir(exist_ok=True)
+
+        target = inbox_dir / f"{stem}.md"
+        if target.exists():
+            counter = 1
+            while (inbox_dir / f"{stem}-{counter}.md").exists():
+                counter += 1
+            target = inbox_dir / f"{stem}-{counter}.md"
+
+        date_str = today or date.today().isoformat()
+        frontmatter = f"---\ntitle: {title}\ndate: {date_str}\ntags:\n  - inbox\n---\n"
+        target.write_text(frontmatter + content, encoding="utf-8")
+
+        return str(target.relative_to(self._root))
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -264,16 +373,34 @@ class Vault:
         )
 
     def _list_top_level(self) -> list[TopLevelFolder]:
-        result: list[TopLevelFolder] = []
-        for name in KNOWLEDGE_FOLDERS:
-            folder_path = self._root / name
-            if folder_path.exists() and folder_path.is_dir():
-                note_count = sum(
-                    1 for p in folder_path.rglob("*.md")
-                    if not self._is_excluded(p)
-                )
-                result.append(TopLevelFolder(name=name, note_count=note_count))
-        return result
+        # Single rglob pass, partitioned by top-level folder name (PERF-02).
+        counts: dict[str, int] = {name: 0 for name in KNOWLEDGE_FOLDERS}
+        for p in self._root.rglob("*.md"):
+            if self._is_excluded(p):
+                continue
+            rel = p.relative_to(self._root)
+            if rel.parts and rel.parts[0] in counts:
+                counts[rel.parts[0]] += 1
+        return [
+            TopLevelFolder(name=name, note_count=counts[name])
+            for name in KNOWLEDGE_FOLDERS
+            if (self._root / name).is_dir()
+        ]
+
+    def _resolve_wikilink_path(
+        self, wikilink: str, file_list: list[Path] | None = None
+    ) -> str:
+        """Convert an INDEX wikilink (stem or path-without-ext) to a relative .md path."""
+        if "/" in wikilink:
+            return wikilink + ".md"
+
+        candidates = file_list if file_list is not None else [
+            p for p in self._root.rglob("*.md") if not self._is_excluded(p)
+        ]
+        matches = [p for p in candidates if p.stem == wikilink]
+        if matches:
+            return str(sorted(matches)[0].relative_to(self._root))
+        return wikilink + ".md"
 
     def _is_excluded(self, path: Path) -> bool:
         """Return True if path falls under an excluded top-level directory."""
@@ -284,51 +411,8 @@ class Vault:
         return bool(rel.parts) and rel.parts[0] in EXCLUDED_DIRS
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-
-# INDEX.md entry pattern: any line containing [[wikilink]]
-_WIKILINK_RE = re.compile(r'\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]')
-_AKA_RE = re.compile(r'\(aka ([^)]+)\)')
-_TAGS_RE = re.compile(r'_([^_]+)_')
-_DESC_RE = re.compile(r'—\s*(.+)$')
-
-
-def _parse_index_line(line: str) -> IndexEntry | None:
-    """Parse one INDEX.md line into an IndexEntry, or None if not a note entry."""
-    wikilink_match = _WIKILINK_RE.search(line)
-    if not wikilink_match:
-        return None
-
-    wikilink = wikilink_match.group(1).strip()
-    title = (wikilink_match.group(2) or wikilink).strip()
-
-    aliases: list[str] = []
-    aka_match = _AKA_RE.search(line)
-    if aka_match:
-        aliases = [a.strip() for a in aka_match.group(1).split(",")]
-
-    tags: list[str] = []
-    tags_match = _TAGS_RE.search(line)
-    if tags_match:
-        # Format: "status · tag1, tag2" — split on · and ,
-        parts = re.split(r"[·,]", tags_match.group(1))
-        tags = [t.strip() for t in parts if t.strip()]
-
-    description = ""
-    desc_match = _DESC_RE.search(line)
-    if desc_match:
-        description = desc_match.group(1).strip()
-
-    return IndexEntry(
-        wikilink=wikilink,
-        title=title,
-        description=description,
-        tags=tags,
-        aliases=aliases,
-    )
-
-
-def _empty_metadata(stem: str) -> NoteMetadata:
-    return NoteMetadata(title=stem, date=None, description=None, tags=[], aliases=[])
+def _to_kebab(title: str) -> str:
+    """Convert a title to a kebab-case filename slug."""
+    slug = title.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    return slug.strip("-")
