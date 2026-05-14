@@ -8,6 +8,7 @@ dist/
 
 # Environment
 .env
+.python-version
 
 # macOS
 .DS_Store
