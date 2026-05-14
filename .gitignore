@@ -16,3 +16,4 @@ dist/
 # Claude Code
 .claude/
 reviews/
+.mcp.json
